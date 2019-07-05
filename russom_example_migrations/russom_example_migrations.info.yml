@@ -1,0 +1,5 @@
+name: Russom Example
+type: module
+description: Custom migrations, using custom plugin development.
+package: Russom Example
+core: 8.x
