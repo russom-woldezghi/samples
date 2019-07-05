@@ -1,0 +1,12 @@
+metatag.metatag_tag.citation_abstract:
+  type: label
+  label: 'Citation Abstract'
+metatag.metatag_tag.citation_doi:
+  type: label
+  label: 'Citation DOI'
+metatag.metatag_tag.citation_fulltext_html_url:
+  type: label
+  label: 'Citation Full Text HTML URL'
+metatag.metatag_tag.citation_publisher:
+  type: label
+  label: 'Citation Publisher'

@@ -1,0 +1,6 @@
+name: Russom Example Google Scholar
+type: module
+description: Provides additional meta tags for indexing scholarly articles in Google Scholar.
+core: 8.x
+package: Russom Example
+

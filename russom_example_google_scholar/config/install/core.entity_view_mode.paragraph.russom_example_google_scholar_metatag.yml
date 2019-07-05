@@ -1,0 +1,10 @@
+langcode: en
+status: true
+dependencies:
+  module:
+    - paragraphs
+    - russom_example_google_scholar
+id: paragraph.russom_example_google_scholar_metatag
+label: 'Russom Example Google Scholar'
+targetEntityType: paragraph
+cache: true
