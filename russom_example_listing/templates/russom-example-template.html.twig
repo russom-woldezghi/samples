@@ -1,0 +1,158 @@
+{#
+/**
+ * @file
+ *
+ * @ingroup themeable
+ */
+#}
+<style>
+    [v-cloak] {
+        display: none;
+    }
+</style>
+<div id="listing">
+    <div class="hero">
+        <div class="container">
+            <div class="l-1up">
+                <h1 class="hero__title">{{ "Listing Page Title"|t }}</h1>
+                <h2 class="hero__subtitle">{{ "Listing Page Subtitle"|t }}</h2>
+            </div>
+        </div>
+    </div>
+    <div class="grid--content-with-rail" @submit.prevent="formReset" v-cloak>
+        <aside class="rail">
+            <button id="rail-filters-trigger" class="rail-filters-trigger">
+                <div id="rail-filter-hamburger" class="hamburger hamburger--squeeze">
+                    <div class="hamburger-box">
+                        <div class="hamburger-inner"></div>
+                    </div>
+                </div>
+                {{ "Filters"|t }}
+            </button>
+            <form id="rail-filters" class="rail-filter">
+                <h2 class="rail-filter__title">{{ "Filter by"|t }}</h2>
+
+                <label for="company">{{ "Company Name"|t }}</label>
+                <input type="search" id="company" v-model="search" placeholder="Enter company name...">
+
+                <label for="location">{{ "Location"|t }}</label>
+
+                <select multiple id="location" v-model="selectLocationFilter" is="chosen-select"
+                        :value="selectLocationFilter"
+                        @input="selectLocationFilter = $event" data-placeholder="Choose a location...">
+                    <optgroup label="All">
+                        <option value="All">All</option>
+                    </optgroup>
+                    <optgroup v-for="(cities, state) in locationOptions" v-bind:label="state">
+                        <option v-for="city in cities" v-bind:value="city">{{ "{{ city }}" }}</option>
+                    </optgroup>
+                </select>
+
+                <label for="issue">{{ "Issues"|t }}</label>
+                <select multiple id="issue" v-model="selectIssueFilter" is="chosen-select" :value="selectIssueFilter"
+                        @input="selectIssueFilter = $event" data-placeholder="Choose Issues...">
+                    <option value="All">All</option>
+                    <option v-for="term in taxonomyOptions(company, 'issues')" v-bind:value="term">
+                        {{ "{{ term }}" }}
+                    </option>
+                </select>
+
+                <label for="solution">{{ "Solutions"|t }}</label>
+                <select multiple id="solution" v-model="selectSolutionFilter" is="chosen-select"
+                        :value="selectSolutionFilter" @input="selectSolutionFilter = $event"
+                        data-placeholder="Choose Solutions...">
+                    <option value="All">All</option>
+                    <option v-for="term in taxonomyOptions(company, 'solutions')"
+                            v-bind:value="term">{{ "{{ term }}" }}</option>
+                </select>
+
+                <label for="commodities">{{ "Commodities"|t }}</label>
+                <select multiple id="commodities" v-model="selectCommodityFilter" is="chosen-select"
+                        :value="selectCommodityFilter" @input="selectCommodityFilter = $event"
+                        data-placeholder="Choose Commodities...">
+                    <option value="All">All</option>
+                    <option v-for="term in taxonomyOptions(company, 'commodities')"
+                            v-bind:value="term">{{ "{{ term }}" }}</option>
+                </select>
+
+                <input type="reset" id="clear" value="Clear" v-on:click="formReset">
+
+            </form>
+        </aside>
+        <article class="main-content">
+            <section class="listing-view section">
+                <div class="container">
+                    <header class="list-header">
+                        <h2 class="list-results-title">
+                            <span v-if="showResultsCount" v-cloak>{{ "Your Search Matched "|t }}
+                                <strong>{{ "{{filter.length}}" }}</strong>{{ " of "|t }}
+                                <strong>{{ "{{totalCount}}" }}</strong> {{ "Companies"|t }}</span>
+                        </h2>
+                        <form class="list-sort">
+                            <label for="list-sort" class="list-sort__label">{{ "Sort by"|t }}</label>
+                            <select id="list-sort" class="list-sort__select" v-model="sort">
+                                <option value="result">{{ "Best Result"|t }}</option>
+                                <option value="title">{{ "Name"|t }}</option>
+                                <option value="rating">{{ "Rating"|t }}</option>
+                                <option value="year">{{ "Year"|t }}</option>
+                            </select>
+                        </form>
+                    </header>
+                    <ul class="listing">
+                        <li class="list-item" v-for="(company,index) in filter" :key="company.title"
+                            v-if="filter && filter.length > 0 && index <= range">
+                            <article class="teaser">
+                                <a class="teaser__link" v-bind:href="company.url" v-cloak>
+                                    <div :class="imageTeaserCSS(company.image)"
+                                         :style="imageTeaserStyle(company.image)">
+                                        <div class="teaser__overlay">
+                                            <div v-if="company.badges" class="badge-counter">
+                                                <span class="badge-count">{{ "{{company.badges}}" }}</span>
+                                                <span class="badge-label">{{ "Badges"|t }}</span>
+                                            </div>
+                                            <div v-if="company.rating" class="rating">
+                                                <star-rating disabled v-bind:value="company.rating"
+                                                             name="rating"></star-rating>
+                                            </div>
+                                            <span class="teaser__button button button--secondary">{{ "View Company"|t }}
+                                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 15 9.6"><path
+                                                            d="M15 4.8L10.2 0 9 1.2l2.7 2.7H0v1.8h11.7L9 8.4l1.2 1.2L15 4.8z"></path></svg>
+                                                </span>
+                                        </div>
+                                    </div>
+                                    <h3 class="teaser__title">{{ "{{company.title}}" }}</h3>
+                                    <div class="teaser__bottom">
+                                        <div class="teaser__data">
+                                            <h4 class="sm-heading">{{ "Location"|t }}</h4>
+                                            {#<span>{{ "{{company.city}}" }}, {{ "{{company.state_abbreviation}}" }}</span>#}
+                                            <span>{{ "{{ locationCompany(company.city, company.state_abbreviation) }}" }}</span>
+                                        </div>
+                                        <div v-if="yearFounded(company.year)" class="teaser__data">
+                                            <h4 class="sm-heading">{{ "Years in business"|t }}</h4>
+                                            <span>{{ "{{yearFounded(company.year)}}" }}</span>
+                                        </div>
+                                        <div v-if="company.number_members" class="teaser__data">
+                                            <h4 class="sm-heading">{{ "# Members Using"|t }}</h4>
+                                            <span>{{ "{{company.number_members}}" }}</span>
+                                        </div>
+                                        <div v-if="company.acres" class="teaser__data">
+                                            <h4 class="sm-heading">{{ "Acres Deployed"|t }}</h4>
+                                            <span>{{ "{{company.acres}}" }}</span>
+                                        </div>
+                                    </div>
+                                </a>
+                            </article>
+                        </li>
+                    </ul>
+                    <h3 v-if="!filter.length && showResultsCount">{{ "No results were found. Please try a different search criteria."|t }}</h3>
+                    <div v-if="filter.length && showLoadMore">
+                        <button class="listing__button" type="" v-model="watchResults(filter.length)"
+                                v-on:click="updateResults(filter.length)">
+                            {{ "Load More"|t }}
+                        </button>
+                    </div>
+                </div>
+            </section>
+        </article>
+    </div>
+</div>

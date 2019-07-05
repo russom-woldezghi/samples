@@ -1,0 +1,8 @@
+name: Russom Example Banner
+type: module
+description: Handles scheduling and publishing of banners.
+core: 8.x
+package: Russom Example
+
+dependencies:
+  - draggableviews

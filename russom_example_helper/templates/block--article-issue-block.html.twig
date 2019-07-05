@@ -1,0 +1,28 @@
+{#
+/**
+ * @file
+ * Profile Article Issue Footer block.
+ */
+#}
+{% if other_articles_in_issue %}
+    <section class="russom-example__article-issue-footer">
+        {% set issue_pub_date = issue_publication_date|date('U')|format_date('mon_year') %}
+        <div class="container">
+            <h3 class="russom-example__title-label">{{ 'Also in this Issue'|t }}</h3>
+            <h4 class="russom-example__title-label">{{ issue_pub_date }}</h4>
+            <div class="russom-example__layout--two-column russom-example__article-issue-footer__block">
+                <div class="russom-example__col-one--med">
+                    {% for article in other_articles_in_issue|slice(0,2) %}
+                        {{ drupal_entity('node', article, 'teaser_reverse') }}
+                    {% endfor %}
+                </div>
+                <div class="russom-example__col-two--med">
+                    {% for article in other_articles_in_issue|slice(2,2) %}
+                        {{ drupal_entity('node', article, 'teaser_reverse') }}
+                    {% endfor %}
+                </div>
+            </div>
+            <a href="{{ issue_url }}" class="russom-example__link--reversed">{{ 'View Full Issue'|t }}</a>
+        </div>
+    </section>
+{% endif %}

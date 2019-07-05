@@ -1,0 +1,279 @@
+<?php
+
+/**
+ * @file
+ * Contains russom_example_forums.module.
+ */
+
+use Drupal\node\NodeInterface;
+use Drupal\node\Entity\Node;
+use Drupal\Core\Access\AccessResult;
+use Drupal\Core\Link;
+use Drupal\Core\Url;
+use Drupal\Core\Form\FormStateInterface;
+use Drupal\comment\Plugin\Field\FieldType\CommentItemInterface;
+use Drupal\Core\Render\Markup;
+
+/**
+ * Implements hook_node_access().
+ */
+function russom_example_forums_node_access(NodeInterface $node, $op, $account) {
+  $node_type = $node->bundle();
+
+  $user = \Drupal::currentUser();
+
+  if (!$user->hasPermission('access forum content') && $node_type == 'forum') {
+    return AccessResult::forbidden();
+  }
+}
+
+/**
+ * Implements hook_form_FORM_ID_alter().
+ */
+function russom_example_forums_form_comment_comment_forum_form_alter(&$form, FormStateInterface &$form_state, $form_id) {
+  // Conditionally show `field_opinion_delegation_name` field, based on `field_opinion_type` field value.
+  $form['field_opinion_delegation_name']['#states'] = [
+    'visible' => [
+      'input[name="field_opinion_type"]' => ['value' => 'delegation'],
+    ],
+  ];
+  $form['#validate'][] = '_comment_forum_form_validate';
+
+  // Hide `Author on` field due to form display validation errors with time/date input fields.
+  hide($form['author']['date']);
+}
+
+/**
+ * Implements _comment_forum_validate().
+ */
+function _comment_forum_form_validate(&$form, FormStateInterface &$form_state) {
+  // Validate if `field_opinion_delegation_name` is not null for `field_opinion_type`
+  // with a `delegation` value selected.
+  $opinion_type = $form_state->getValue('field_opinion_type');
+
+  if (!empty($opinion_type) && $opinion_type[0]['value'] == 'delegation') {
+    $values = $form_state->getValue('field_opinion_delegation_name');
+
+    if (empty($values[0]['value'])) {
+      $form_state->setErrorByName('field_opinion_delegation_name', t('Please enter a Delegation Name.'));
+    }
+  }
+}
+
+/**
+ * Implements hook_preprocess_node()
+ */
+function russom_example_forums_preprocess_node(&$variables, &$node) {
+
+  $node = $variables['elements']['#node'];
+  if ($node->getType() == 'forum') {
+    // Shows a closed message for closed (comment disabled) forums.
+    if ($node->comment_forum->status == CommentItemInterface::CLOSED) {
+
+      $text = t('Comments are closed for this forum topic.');
+      $closed_message = Markup::create($text);
+
+      $variables['content']['closed_message'] = [
+        '#markup' => $closed_message,
+      ];
+    }
+    // Add print link with route parameters and link title.
+    $url = Link::fromTextAndUrl(t('Print PDF'), Url::fromRoute('entity_print.view', [
+      'export_type' => 'pdf',
+      'entity_type' => 'node',
+      'entity_id' => $node->id(),
+    ]));
+
+    // Add print link title.
+    $url->getUrl()->setOption('attributes', ['title' => t('Print PDF')]);
+
+    // Convert to string to be rendered.
+    $link = $url->toString();
+    $variables['content']['print'] = [
+      '#markup' => $link,
+    ];
+  }
+}
+
+/**
+ * Implements hook_preprocess_forums().
+ */
+function russom_example_forums_preprocess_forums(&$variables) {
+  // Apply new column `topics_original` variable is available.
+  if (isset($variables['topics_original'])) {
+    // Set the new column with sorting.
+    $resolution_column[] = [
+      'data' => t('Resolution'),
+      'field' => 'f.resolution',
+      'sort' => 'desc',
+    ];
+    // Add "Resolution" column after "Topic" column.
+    array_splice($variables['topics']['#header'], 1, 0, $resolution_column);
+
+    $resolutions = [];
+
+    // Get values of resolution fields value.
+    foreach ($variables['topics_original'] as $node) {
+      $resolutions[] = $node->get('field_resolution')->value;
+    }
+    // Add resolution field for each forum topic node post to the table row, under Resolution.
+    foreach ($variables['topics']['#rows'] as $key => &$row) {
+      $resolution = $resolutions[$key];
+      // Check if value is not null
+      if (is_null($resolution)) {
+        // Setting to FALSE so cell is rendered, and is not filled in by other column values.
+        $resolution = FALSE;
+      }
+      array_splice($row, 1, 0, $resolution);
+    }
+  }
+
+  // Render print link for forum(s) and nodes/comments.
+  $current_user = \Drupal::currentUser();
+  $access_forum = $current_user->hasPermission('access forum content');
+
+  // User has `access forum content` permission.
+  if ($access_forum) {
+    if ($variables['term']->id()) {
+      // Add print link to node forums list, forum topic list (list of forum nodes).
+      $forum_print_path = 'forums/print/' . $variables['term']->id();
+      // Get internal route set in routing.yml.
+      $url = Url::fromUri('internal:/' . $forum_print_path);
+
+      // Generate link with forum name.
+      $forum_name = $variables['term']->get('name')->value;
+      $print_link = Link::fromTextAndUrl(t('Print ' . $forum_name), $url);
+
+      // Render link and add attributes, such as class and title.
+      $print_link = $print_link->toRenderable();
+      $print_link['#attributes'] = [
+        'class' => 'print_forum_link',
+        'title' => t('Go to print forum page.'),
+      ];
+
+      $variables['print_link'] = $print_link;
+    }
+  }
+}
+
+/**
+ * Implements hook_preprocess_html().
+ */
+function russom_example_forums_preprocess_html(&$variables) {
+  // Apply to forum print page only.
+  if (_isForumPrintPage()) {
+    // Remove admin toolbar from print page.
+    unset($variables['page_top']['toolbar']);
+  }
+}
+
+/**
+ * Implements hook_preprocess_field().
+ */
+function russom_example_forums_preprocess_field(&$variables) {
+  // Apply to forum print page(s) only.
+  if (_isForumPrintPage()) {
+    if (($variables['element']['#entity_type'] == 'node') && ($variables['element']['#bundle'] == 'forum')) {
+      if (($variables['field_name'] == 'comment_forum') && ($variables['field_type'] == 'comment')) {
+        // Set to NULL to remove rendering of "Add new comment" form for node displays.
+        $variables['element']['0']['comment_form'] = NULL;
+      }
+    }
+  }
+}
+
+/**
+ * Checks if current page is a forum print page.
+ *
+ * @return boolean
+ */
+function _isForumPrintPage() {
+  // Get current path.
+  $current_path = explode('/', \Drupal::service('path.current')->getPath());
+
+  /* If current path can be exploded into array and contains "forums" and "print",
+   * unset the toolbar so print page will not contain toolbar markup.
+   */
+  if (is_array($current_path) && $current_path[1] == 'forums' && $current_path[2] == 'print') {
+    return TRUE;
+  }
+  return FALSE;
+}
+
+/**
+ * Implements hook_entity_type_build().
+ */
+function russom_example_forums_entity_type_alter(array &$entity_types) {
+  $module_handler = \Drupal::service('module_handler');
+  if ($module_handler->moduleExists('votingapi_widgets')) {
+    $plugins = \Drupal::service('plugin.manager.voting_api_widget.processor')
+      ->getDefinitions();
+
+    foreach ($plugins as $plugin_id => $definition) {
+      // Adds custom form for flag votingapi_widget plugin.
+      if ($plugin_id == 'flag') {
+        $entity_types['vote']->setFormClass('votingapi_' . $plugin_id, 'Drupal\russom_example_forums\Form\FlagBaseRatingForm');
+      }
+    }
+  }
+}
+
+/**
+ * Implements hook_preprocess_entity_print__node__forum().
+ */
+function russom_example_forums_preprocess_entity_print__node__forum(&$variables) {
+  // Get current path, parse and explode url.
+  $current_print_path = \Drupal::service('path.current')->getPath();
+  $uri_path = parse_url($current_print_path, PHP_URL_PATH);
+  $uri_segments = explode('/', $uri_path);
+  $nid = $uri_segments[4];
+
+  // Load node and get title for node_title variable.
+  $title = Node::load($nid)->getTitle();
+  $variables['node_title'] = $title;
+}
+
+/**
+ * Implements hook_preprocess_comment__comment_forum__forum().
+ */
+function russom_example_forums_preprocess_comment__comment_forum__forum(&$variables) {
+
+  $current_user = \Drupal::currentUser();
+  $admin_comments = $current_user->hasPermission('administer comments');
+
+  // User has `administer comments` permission.
+  if ($admin_comments) {
+    // Get comment id.
+    $comment = $variables['elements']['#comment'];
+    $entity_id = $comment->get('cid')->getValue()[0]['value'];
+
+    // Is comment flagged by a user.
+    $flagged = _isCommentFlagged($entity_id);
+
+    // If comment is flagged, add class.
+    if ($flagged) {
+      $variables['flagged'] = TRUE;
+    }
+  }
+}
+
+/**
+ * Implements _isCommentFlagged().
+ *
+ */
+function _isCommentFlagged($entity_id) {
+  // Getting user voting record by entity id, type and user uid.
+
+  $query = db_select('votingapi_vote', 'v')
+    ->fields('v', ['entity_type', 'entity_id', 'value'])
+    ->condition('entity_type', 'comment')
+    ->condition('entity_id', $entity_id)
+    ->condition('value', '1')
+    ->execute();
+
+  $result = $query->fetchAll();
+
+  if (!empty($result)) {
+    return TRUE;
+  }
+}

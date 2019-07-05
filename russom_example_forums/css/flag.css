@@ -1,0 +1,28 @@
+.votingapi-widgets.flag .flag-rating {
+    height: 50px;
+}
+
+.votingapi-widgets.flag .flag-rating a {
+    border: none !important;
+    margin-right: 10px;
+}
+
+.votingapi-widgets.flag .flag-rating i {
+    margin-right: 10px;
+}
+
+.votingapi-widgets.flag .flag-rating a.disabled {
+    opacity: 0.5;
+}
+
+.votingapi-widgets.flag .flag-rating .messages {
+    font-size: small;
+}
+
+.flagged {
+    width: 100%;
+    padding: 10px;
+    text-align: center;
+    color: black;
+    background: pink;
+}

@@ -1,0 +1,6 @@
+name: Example Helper
+description: Helper module to make alterations to contrib and core code
+package: Russom Example
+type: module
+version: 1.0
+core: 8.x

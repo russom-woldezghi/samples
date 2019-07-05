@@ -1,0 +1,49 @@
+{#
+/**
+ * @file
+ * Issue Reference block.
+ */
+#}
+ {% if polls %}
+     {% for poll in polls %}
+         <section class="russom-example__poll">
+             <div class="container">
+                 <div class="russom-example__layout--center-offset">
+                     <div class="russom-example__page-content">
+                         {{ drupal_entity('poll', poll, 'inline') }}
+                     </div>
+                 </div>
+             </div>
+         </section>
+     {% endfor %}
+ {% endif %}
+
+{% if (issues) or (ctas) %}
+    <section class="russom-example__related-issues">
+        <div class="container">
+            <div class="russom-example__related-issues__container">
+                {% if issues %}
+                    <div class="russom-example__related-issues--left">
+                        <h2 class="russom-example__title-label">{{ 'Other Issues'|t }}</h2>
+                        <a href="/issues" class="russom-example__related-issues__link"
+                           title="Issue Archive">{{ 'Issue Archive'|t }}</a>
+                        <ul class="russom-example__related-issues__list">
+                            {% for issue in issues|slice(0, 3) %}
+                                <li>{{ drupal_entity('node', issue, 'teaser') }}</li>
+                            {% endfor %}
+                        </ul>
+                    </div>
+                {% endif %}
+                {% if ctas %}
+                    <div class="russom-example__related-issues--right">
+                        {% for cta in ctas %}
+                            <aside class="russom-example__rail-cta">
+                                {{ drupal_entity('node', cta, 'teaser') }}
+                            </aside>
+                        {% endfor %}
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </section>
+{% endif %}

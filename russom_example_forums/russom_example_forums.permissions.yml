@@ -1,0 +1,5 @@
+# In russom_example_forums.permissions.yml file.
+access forum content:
+  title: 'View forum content'
+  description: 'Russom Example custom view forum content permissions'
+  restrict access: TRUE

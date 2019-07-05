@@ -1,0 +1,1004 @@
+<?php
+
+/**
+ * @file
+ * Contains russom_example_helper.module.
+ */
+
+use Drupal\Core\Asset\AttachedAssetsInterface;
+use Drupal\Core\Cache\Cache;
+use Drupal\Core\Cache\CacheBackendInterface;
+use Drupal\Core\Datetime\DrupalDateTime;
+use Drupal\Core\Entity\EntityInterface;
+use Drupal\Core\Form\FormStateInterface;
+use Drupal\Core\StringTranslation\TranslatableMarkup;
+use Drupal\node\Entity\Node;
+use Drupal\paragraphs\Entity\Paragraph;
+use Drupal\views\ViewExecutable;
+use Drupal\field\Entity\FieldStorageConfig;
+use Drupal\field\Entity\FieldConfig;
+use Drupal\taxonomy\Entity\Term;
+use \Drupal\search_api\IndexInterface;
+
+
+/**
+ * Implements hook_form_alter().
+ */
+function russom_example_form_alter(&$form, FormStateInterface $form_state, $form_id) {
+
+  // Customization to poll forms, node add and edit
+  if ($form_id == 'poll_form' || 'poll_edit_form') {
+    $form['question']['widget'][0]['value']['#title'] = t('Administrative poll title');
+    $form['question']['widget'][0]['value']['#description'] = t('Title of the poll for content administrators and moderators.');
+  }
+
+  // Force default text format for fields
+  // Known issue with Drupal 8 core: https://www.drupal.org/project/drupal/issues/1278886
+  if ($form_id == 'node_podcast_form' || 'node_podcast_edit_form') {
+    if (isset($form['field_audio_source']) && !isset($form['field_audio_source']['und']['0']['#format'])) {
+      $form['field_audio_source']['widget'][0]['#format'] = "restricted_html";
+    }
+  }
+  // Force default text format for paragraph text area fields
+  if ($form_id == 'node_article_form' || 'node_article_edit_form') {
+    $form['field_reference']['widget'][0]['subform']['field_reference_book_title']['widget']['0']['#format'] = "restricted_html";
+    $form['field_reference']['widget'][0]['subform']['field_reference_journal_title']['widget']['0']['#format'] = "restricted_html";
+    $form['field_reference']['widget'][0]['subform']['field_reference_title']['widget']['0']['#format'] = "restricted_html";
+    $form['field_reference']['widget'][0]['subform']['field_accessed_on']['widget']['0']['#format'] = "restricted_html";
+  }
+
+  // Custom class for poll form, there is no specific id so had to check for string
+  if (strpos($form_id, 'poll_view_form_') !== FALSE) {
+    if (!empty($form['actions']['cancel']) || is_null($form['actions']['vote'])) {
+      $form['#attributes']['class'][] = 'is-open';
+    }
+    $form['#attributes']['class'][] = 'russom-example__poll__answers';
+    $form['actions']['vote']['#value'] = 'Submit';
+    // Disable refocusing of actions buttons, prevents scrolling after form submission.
+    $form['actions']['vote']['#ajax']['disable-refocus'] = TRUE;
+    $form['actions']['cancel']['#ajax']['disable-refocus'] = TRUE;
+
+    // Form actions weight;
+    $form['actions']['#weight'] = 1000;
+
+    // Remove unused form buttons.
+    unset($form['actions']['result']);
+    unset($form['actions']['back']);
+    $poll = $form['poll']['#value'];
+    if (!$poll->hasUserVoted() && $poll->isOpen() && $poll->getAnonymousVoteAllow()) {
+      // Markup for show hide field.
+      $show_hide_html = '<div class="russom-example__poll__reveal"><span class="poll__show">Show</span><span class="poll__hide">Hide</span> results</div>';
+      // Pseudo form actions field for show_hide field.
+      $form['actions']['show_hide'] = [
+        '#type' => 'markup',
+        '#markup' => $show_hide_html,
+      ];
+    }
+  }
+
+  // Alter embed insert dialog box
+  if ($form_id == 'editor_image_dialog') {
+    // Remove the none option
+    unset($form['align']['#options']['none']);
+  }
+}
+
+/**
+ * Implements hook_theme_suggestions_form_element().
+ */
+function russom_example_theme_suggestions_form_element(array $variables) {
+  $moduleHandler = \Drupal::service('module_handler');
+  // Check if poll module is available and enabled
+  if ($moduleHandler->moduleExists('poll')) {
+    $id = $variables['element']['#id'];
+    // Check if field has poll module id naming prefix
+    if (strpos($id, 'edit-choice') !== FALSE) {
+      if (isset($variables['element']['#theme'])) {
+        $suggestions[] = 'form_element__poll__' . $variables['element']['#theme'];
+        return $suggestions;
+      }
+    }
+  }
+}
+
+/**
+ * Implements template_preprocess_form_element().
+ */
+function russom_example_preprocess_form_element(&$variables) {
+  // Fetch #return_value.
+  if (!empty($variables['element']['#return_value'])) {
+    $poll_choice_id = $variables['element']['#return_value'];
+    if ($poll_choice_id) {
+      // Load poll by poll choice id.
+      if ($poll = _getPollByPollChoiceId($poll_choice_id)) {
+        // Calculate total number of votes for the poll.
+        $total_votes = 0;
+        $poll_entity = reset($poll);
+        foreach ($poll_entity->getVotes() as $vote) {
+          $total_votes += $vote;
+        }
+
+        // Add percentage variable for each poll choice field.
+        foreach ($poll_entity->getVotes() as $pid => $vote) {
+          if ($poll_choice_id == $pid) {
+            $percentage = round($vote * 100 / max($total_votes, 1));
+            $variables['percentage'] = $percentage;
+          }
+        }
+      }
+    }
+  }
+}
+
+/**
+ * Implements hook_css_alter().
+ */
+function russom_example_css_alter(&$css, AttachedAssetsInterface $assets) {
+  // Remove poll.base.css file.
+  unset($css[drupal_get_path('module', 'poll') . '/css/poll.base.css']);
+}
+
+/**
+ * Implements hook_form_FORM_ID_alter().
+ */
+function russom_example_form_views_exposed_form_alter(&$form, FormStateInterface $form_state, $form_id) {
+
+  $view_form_ids = [
+    [
+      'id' => 'views-exposed-form-article-listing-page-1',
+      'bundle' => ['article'],
+    ],
+    [
+      'id' => 'views-exposed-form-article-listing-page-2',
+      'bundle' => ['article'],
+    ],
+    [
+      'id' => 'views-exposed-form-podcast-listing-page-1',
+      'bundle' => ['podcast'],
+    ],
+    [
+      'id' => 'views-exposed-form-russom-example-search-page-1',
+      'bundle' => ['issue', 'podcast', 'article'],
+    ],
+    [
+      'id' => 'views-exposed-form-ethics-cases-listing-page-1',
+      'bundle' => 'article',
+    ],
+  ];
+
+  foreach ($view_form_ids as $key => $view_form) {
+
+    // Check form_ids match string in $view_form_ids
+    if (isset($form['#id']) && $form['#id'] == $view_form['id']) {
+
+      $form['actions']['submit']['#attributes']['class'][] = 'russom-example__filter-button';
+
+      // Get list of configured filter fields in views configuration
+      foreach ($form as $key => $field) {
+        $field_key = explode('_', $key);
+        if ($field_key[0] === 'field') {
+          $field_list[] = $key;
+        }
+      }
+
+      // Apply custom chosen class and placeholder for fields
+      foreach ($field_list as $key => $chosen_field) {
+        foreach ($form['#info'] as $key => $value) {
+          if ($value['value'] == $chosen_field) {
+            if ($form[$chosen_field]['#type'] == 'select') {
+              $form[$chosen_field]['#attributes']['data-placeholder'] = 'Choose ' . $value['label'];
+              $form[$chosen_field]['#attributes']['class'][] = 'russom-example__chosen';
+            }
+          }
+        }
+      }
+
+      // Set drupal static variable for form field options
+      $options = &drupal_static(__FUNCTION__);
+
+      //Filter by year select options
+      if (is_null($options)) {
+
+        // If search page, provide $year_options variable here
+        // So other content types can be queried for pubslished nodes
+        if ($view_form['id'] === 'views-exposed-form-russom-example-search-page-1') {
+          $year_options = [];
+        }
+
+
+        foreach ($view_form['bundle'] as $key => $bundle) {
+
+          $cid = 'russom_example:' . $bundle . ':year';
+
+          $data = \Drupal::cache()->get($cid);
+          if (!$data) {
+
+            // If not search page, provide $year_options variable here
+            if ($view_form['id'] !== 'views-exposed-form-russom-example-search-page-1') {
+              $year_options = [];
+            }
+
+            // Add default all option
+            $year_options['all'] = new TranslatableMarkup(' All ');
+
+            // Query for published nodes by bundle from $view_form variable
+            $query = \Drupal::entityQuery('node');
+            $query->condition('type', $bundle)
+              ->condition('status', 1)
+              ->sort('field_publication_date', 'ASC');
+            $result = $query->execute();
+            if ($result) {
+              $nodes = Node::loadMultiple($result);
+              foreach ($nodes as $node) {
+                $date = $node->field_publication_date->value;
+
+                if ($date) {
+                  $date = new DrupalDateTime($date, new DateTimeZone('UTC'));
+                  $year = $date->format('Y');
+                  if (!isset($year_options[$year])) {
+                    $year_options[$year] = $year;
+
+                  }
+                }
+              }
+            }
+
+            $cache_tags = ['node:' . $bundle . ':year'];
+            \Drupal::cache()
+              ->set($cid, $year_options, CacheBackendInterface::CACHE_PERMANENT, $cache_tags);
+
+          }
+          else {
+            $year_options = $data->data;
+          }
+        }
+
+      }
+      // Filtering by month field
+      if (is_null($options)) {
+
+        // If search page, provide $month_options variable here
+        // So other content types can be queried for pubslished nodes
+        if ($view_form['id'] === 'views-exposed-form-russom-example-search-page-1') {
+          $month_options = [];
+        }
+
+        foreach ($view_form['bundle'] as $key => $bundle) {
+          $cid = 'russom_example:' . $bundle . ':month';
+          $data = \Drupal::cache()->get($cid);
+          if (!$data) {
+
+            // If not search page, provide $month_options variable here
+            if ($view_form['id'] !== 'views-exposed-form-russom-example-search-page-1') {
+              $month_options = [];
+            }
+
+            // Add default all option
+            $month_options['all'] = new TranslatableMarkup(' All ');
+
+            // Query for published nodes by bundle from $view_form variable
+            // Gets all publication dates of published nodes
+            $query = \Drupal::entityQuery('node');
+            $query->condition('type', $bundle)
+              ->condition('status', 1)
+              ->sort('field_publication_date', 'ASC');
+            $result = $query->execute();
+            if ($result) {
+              $nodes = Node::loadMultiple($result);
+              foreach ($nodes as $node) {
+                $date = $node->field_publication_date->value;
+                if ($date) {
+                  $date = new DrupalDateTime($date, new DateTimeZone('UTC'));
+                  $month = $date->format('m');
+                  // Give a different file format for display of month
+                  $month_display = $date->format('F');
+                  if (!isset($month_options[$month])) {
+                    $month_options[$month] = $month_display;
+                  }
+                }
+              }
+            }
+
+            $cache_tags = ['node:' . $bundle . ':month'];
+            \Drupal::cache()
+              ->set($cid, $month_options, CacheBackendInterface::CACHE_PERMANENT, $cache_tags);
+          }
+          else {
+            $month_options = $data->data;
+          }
+        }
+      }
+      // Add custom fields (year and month) from field_publication_date field
+      $month_title = new TranslatableMarkup('Month');
+      $form['month'] = [
+        '#title' => $month_title,
+        '#type' => 'select',
+        // '#multiple' => TRUE, Contextual filter does not support multiple values
+        '#options' => $month_options,
+        '#size' => NULL,
+        '#default_value' => 'all',
+        '#attributes' => [
+          'class' => ['russom-example__chosen'],
+          'data-placeholder' => 'Choose ',
+        ],
+      ];
+
+      $year_title = new TranslatableMarkup('Year');
+      $form['year'] = [
+        '#title' => $year_title,
+        '#type' => 'select',
+        // '#multiple' => TRUE, // Contextual filter does not support multiple values
+        '#options' => $year_options,
+        '#size' => NULL,
+        '#default_value' => 'all',
+        '#attributes' => [
+          'class' => ['russom-example__chosen'],
+          'data-placeholder' => 'Choose ',
+        ],
+
+      ];
+    }
+  }
+}
+
+/**
+ * Implements hook_ENTITY_TYPE_presave().
+ */
+function russom_example_node_presave(EntityInterface $entity) {
+
+  $bundle = $entity->bundle();
+  if ($bundle == 'podcast' || 'article' || 'issue') {
+
+    // Checks to see if the field has been updated, then invalidates cache tags
+    // for year of views exposed form
+    $cid = 'russom_example:' . $bundle . ':year';
+    $year_data = \Drupal::cache()->get($cid);
+    if ($year_data) {
+      $options = $year_data->data;
+      $date = $entity->field_publication_date->value;
+      if ($date) {
+        $date = new DrupalDateTime($date, new DateTimeZone('UTC'));
+        $year = $date->format('Y');
+        if (!isset($options[$year])) {
+          Cache::invalidateTags(['node:' . $bundle . ':year']);
+        }
+      }
+    }
+    // for month of views exposed form
+    $cid = 'russom_example:' . $bundle . ':month';
+    $month_data = \Drupal::cache()->get($cid);
+    if ($month_data) {
+      $options = $month_data->data;
+      $date = $entity->field_publication_date->value;
+      if ($date) {
+        $date = new DrupalDateTime($date, new DateTimeZone('UTC'));
+        $month = $date->format('m');
+        if (!isset($options[$month])) {
+          Cache::invalidateTags(['node:' . $bundle . ':month']);
+        }
+      }
+    }
+  }
+
+  if ($bundle == 'issue') {
+    _set_in_this_issue_articles($entity);
+  }
+}
+
+/**
+ * Implements hook_views_pre_execute().
+ */
+
+function russom_example_views_pre_execute(ViewExecutable $view) {
+  // Alter views page for issue listing page
+  if ($view->id() == 'issue_listing' && $view->current_display == 'attachment_1') {
+    // Alters view mode for attachment
+    $view->rowPlugin->options['view_mode'] = 'teaser_with_references';
+  }
+}
+
+/**
+ * Implements hook_theme().
+ */
+function russom_example_theme() {
+  return [
+    // Issue Filter block on issues listing page
+    'issue_filter_block' => [
+      'variables' => [
+        'dates' => NULL,
+      ],
+      'template' => 'block--issue-filter-block',
+    ],
+    // Article Issue Footer block on article pages
+    'article_issue_block' => [
+      'variables' => [
+        'other_articles_in_issue' => NULL,
+        'issue_publication_date' => NULL,
+        'issue_url' => NULL,
+      ],
+      'template' => 'block--article-issue-block',
+    ],
+    // Homepage Footer block on homepage pages
+    'homepage_footer_block' => [
+      'variables' => [
+        'polls' => NULL,
+        'ctas' => NULL,
+        'archives' => NULL,
+        'about_title' => NULL,
+        'about_description' => NULL,
+        'about_link' => NULL,
+        'about_link_title' => NULL,
+        'upcoming_themes' => NULL,
+      ],
+      'template' => 'block--homepage-footer-block',
+    ],
+    // Podcast Issue Footer block on article pages
+    'podcast_issue_block' => [
+      'variables' => [
+        'nids_in_issue' => NULL,
+        'issue_publication_date' => NULL,
+        'issue_url' => NULL,
+      ],
+      'template' => 'block--podcast-issue-block',
+    ],
+    // Issue Reference block on issue pages
+    'issue_reference_block' => [
+      'variables' => [
+        'polls' => NULL,
+        'issues' => NULL,
+        'ctas' => NULL,
+      ],
+      'template' => 'block--issue-reference-block',
+    ],
+  ];
+}
+
+/**
+ * Implements hook_preprocess_page().
+ */
+function russom_example_preprocess_page(&$variables) {
+
+  // Load configuration of block machine name
+  $block_machine_name = [
+    'articleissuefooterblock',
+    'podcastissuefooterblock',
+    'issuefooterblock',
+    'homepagefooterblock',
+  ];
+
+  foreach ($block_machine_name as $key => $block_name) {
+    $block = \Drupal::entityTypeManager()
+      ->getStorage('block')
+      ->load($block_name);
+    if (!empty($block)) {
+      $block_content = \Drupal::entityTypeManager()
+        ->getViewBuilder('block')
+        ->view($block);
+      $variables[$block_name][] = $block_content;
+    }
+  }
+
+  // Search bar for search views page
+  $header_search_bar_machine_name = \Drupal::entityTypeManager()
+    ->getStorage('block')
+    ->load('headersearchbarblock');
+
+  if (!empty($header_search_bar_machine_name)) {
+    $header_search_bar_block = \Drupal::entityManager()
+      ->getViewBuilder('block')
+      ->view($header_search_bar_machine_name);
+    $header_search_bar_block['#cache']['contexts'] = [
+      'route',
+      'url.path',
+      'url.query_args',
+    ];
+
+    $variables['header_search_bar'] = $header_search_bar_block;
+  }
+}
+
+/**
+ * Implements hook_preprocess_node().
+ */
+function russom_example_preprocess_node(&$variables) {
+  $node = $variables['elements']['#node'];
+  if ($node) {
+    if ($node->bundle() == 'article') {
+
+      // Article nid, variables
+      $article_nid = $variables['node']->id();
+      $article_node = $variables['node'];
+
+      $article_field = 'field_article';
+      $volume_number = 'field_volume_number';
+      $issue_number = 'field_issue_number';
+
+      // Query published issues
+      $query = \Drupal::entityQuery('node');
+      $query->condition('type', 'issue')
+        ->condition($article_field, $article_nid);
+      $query_result = $query->execute();
+      $issue_nid = reset($query_result);
+
+      // Get issue node and referenced articles
+      if ($issue_nid) {
+        $issue_node = Node::load($issue_nid);
+
+        // Variables for article node
+        $variables['issue_volume_number'] = $issue_node->$volume_number->value;
+        $variables['issue_number'] = $issue_node->$issue_number->value;
+
+      }
+    }
+  }
+}
+
+/**
+ * Implements hook_theme_suggestions_alter
+ */
+function russom_example_theme_suggestions_alter(array &$suggestions, array $variables) {
+
+  // Custom theme suggests for forms
+  if (isset($variables['element']) && isset($variables['element']['#type']) && $variables['element']['#type'] == 'form') {
+    $original_theme_hook = $variables['theme_hook_original'];
+
+    $suggestions[] = $original_theme_hook . '__' . str_replace('-', '_', $variables['element']['#id']);
+  }
+
+  return $suggestions;
+
+}
+
+
+/**
+ * Change field_biography from string_long to text_long.
+ */
+function russom_example_update_8001() {
+  $database = \Drupal::database();
+  $table = 'paragraph__field_biography';
+  $entity_type = 'paragraph';
+  $field_name = 'field_biography';
+
+  $field_storage = FieldStorageConfig::loadByName($entity_type, $field_name);
+
+  if (is_null($field_storage)) {
+    return;
+  }
+
+  $rows = NULL;
+
+  if ($database->schema()->tableExists($table)) {
+    // The table data to restore after the update is completed.
+    $rows = $database->select($table, 'n')
+      ->fields('n')
+      ->execute()
+      ->fetchAll();
+  }
+
+  $new_fields = [];
+
+  // Use existing field config for new field.
+  foreach ($field_storage->getBundles() as $bundle => $label) {
+    $field = FieldConfig::loadByName($entity_type, $bundle, $field_name);
+    $new_field = $field->toArray();
+    $new_field['field_type'] = 'text_long';
+    $new_field['settings'] = [];
+
+    $new_fields[] = $new_field;
+  }
+
+  // Deleting field storage which will also delete bundles(fields).
+  $new_field_storage = $field_storage->toArray();
+  $new_field_storage['type'] = 'text_long';
+  $new_field_storage['settings'] = [
+    'max_length' => 255,
+    'is_ascii' => FALSE,
+    'case_sensitive' => FALSE,
+  ];
+
+  $field_storage->delete();
+
+  // Purge field data now to allow new field and field_storage with same name
+  // to be created. You may need to increase batch size.
+  field_purge_batch(10);
+
+  // Create new field storage.
+  $new_field_storage = FieldStorageConfig::create($new_field_storage);
+  $new_field_storage->save();
+
+  // Create new fields.
+  foreach ($new_fields as $new_field) {
+    $new_field = FieldConfig::create($new_field);
+    $new_field->save();
+  }
+
+  // Restore existing data in the same table.
+  if (!is_null($rows)) {
+    foreach ($rows as $row) {
+      $database->insert($table)
+        ->fields((array) $row)
+        ->execute();
+    }
+  }
+
+}
+
+
+/**
+ * Implements hook_field_widget_form_alter()
+ */
+function russom_example_field_widget_form_alter(&$element, FormStateInterface $form_state, $context) {
+  // Maps field names to an array containing a single format.
+  $map = [
+    'field_biography' => ['restricted_html'],
+  ];
+
+  $field_name = $context['items']->getFieldDefinition()->getName();
+
+  if (array_key_exists($field_name, $map)) {
+    $element['#allowed_formats'] = $map[$field_name];
+  }
+}
+
+/**
+ * Set all taxonomy terms to published.
+ * See @link
+ * https://www.drupal.org/project/drupal/issues/2981887#comment-12852280
+ */
+function russom_example_update_8002() {
+  $vocabularies = ['article_type', 'core_competency', 'specialty', 'topics'];
+
+  foreach ($vocabularies as $vid) {
+    // Load tree of all terms in each specified vocabulary so we can publish them all.
+    $terms = \Drupal::entityTypeManager()
+      ->getStorage('taxonomy_term')
+      ->loadTree($vid);
+    foreach ($terms as $term) {
+      $term = Term::load($term->tid);
+      $term->setPublished(TRUE);
+      $term->save();
+    }
+  }
+}
+
+/**
+ * Set CME main menu link to /cme.
+ */
+function russom_example_update_8003() {
+  $menu_link = \Drupal::entityTypeManager()
+    ->getStorage('menu_link_content')
+    ->load(161);
+  $menu_link->link->uri = 'internal:/cme';
+  $menu_link->save();
+}
+
+/**
+ * Set field_in_this_issue for all articles referenced in issues.
+ */
+function russom_example_update_8004(&$sandbox) {
+
+  // Use the sandbox at your convenience to store the information needed
+  // to track progression between successive calls to the function.
+  if (!isset($sandbox['max'])) {
+
+    // The count of nodes visited so far.
+
+    // Total nodes that must be visited.
+    $sandbox['max'] = \Drupal::entityQuery('node')
+      ->condition('type', 'issue')
+      ->condition('status', 1)
+      ->count()
+      ->execute();
+
+    // A place to store messages during the run.
+    $sandbox['messages'] = [];
+
+    // Last node read via the query.
+    $sandbox['current'] = 0;
+  }
+
+  $nodes_per_batch = 10;
+
+  // Handle one pass through.
+  $nids = \Drupal::entityQuery('node')
+    ->condition('type', 'issue')
+    ->condition('status', 1)
+    ->range($sandbox['current'], $nodes_per_batch)
+    ->execute();
+
+  foreach ($nids as $nid) {
+    $issue = Node::load($nid);
+    _set_in_this_issue_articles($issue);
+    $sandbox['current']++;
+  }
+
+  print_r($sandbox['current'] . ' nodes processed. ');
+
+  if ($sandbox['max'] == 0) {
+    $sandbox['#finished'] = 1;
+  }
+  else {
+    $sandbox['#finished'] = ($sandbox['current'] / $sandbox['max']);
+  }
+  $percent = round($sandbox['#finished'] * 100) . '%';
+  print_r($percent . ' processed. ');
+}
+
+/**
+ * Move all .
+ */
+function russom_example_update_8005(&$sandbox) {
+
+  // Use the sandbox at your convenience to store the information needed
+
+  $database = \Drupal::database();
+
+  // to track progression between successive calls to the function.
+  if (!isset($sandbox['max'])) {
+
+    // The count of nodes visited so far.
+
+    // Total nodes that must be visited.
+    $sandbox['max'] = $database->select('node__field_call_to_action', 'cta')
+      ->fields('cta', ['field_call_to_action_target_id', 'entity_id'])
+      ->condition('bundle', 'article', '=')
+      ->countQuery()
+      ->execute()
+      ->fetchField();;
+
+    // A place to store messages during the run.
+    $sandbox['messages'] = [];
+
+    // Last node read via the query.
+    $sandbox['current'] = 0;
+  }
+
+  $nodes_per_batch = 50;
+
+  // Handle one pass through.
+  $old_ctas = $database->select('node__field_call_to_action', 'cta')
+    ->fields('cta', ['field_call_to_action_target_id', 'entity_id'])
+    ->condition('bundle', 'article', '=')
+    ->range($sandbox['current'], $nodes_per_batch)
+    ->execute();
+
+  foreach ($old_ctas as $old_cta) {
+    $cta_pararaph = Paragraph::create(['type' => 'cta']);
+    $cta_pararaph->set('field_cta', ['target_id' => $old_cta->field_call_to_action_target_id]);
+    $cta_pararaph->set('field_style', 'primary');
+    $cta_pararaph->save();
+
+    $node = Node::load($old_cta->entity_id);
+
+    $node->field_cta[] = [
+      'target_id' => $cta_pararaph->id(),
+      'target_revision_id' => $cta_pararaph->getRevisionId(),
+    ];
+    $node->save();
+
+    $sandbox['current']++;
+  }
+
+  print_r($sandbox['current'] . ' CTAs processed. ');
+
+  if ($sandbox['max'] == 0) {
+    $sandbox['#finished'] = 1;
+  }
+  else {
+    $sandbox['#finished'] = ($sandbox['current'] / $sandbox['max']);
+  }
+  $percent = round($sandbox['#finished'] * 100) . '%';
+  print_r($percent . ' processed. ');
+}
+
+/**
+ * Set field_issue for all articles.
+ */
+function russom_example_update_8006(&$sandbox) {
+
+  // Use the sandbox at your convenience to store the information needed
+  // to track progression between successive calls to the function.
+  if (!isset($sandbox['max'])) {
+
+    $sandbox['issues'] = _get_issues_by_date();
+
+    // Total nodes that must be visited.
+    $sandbox['max'] = \Drupal::entityQuery('node')
+      ->condition('type', 'article')
+      ->count()
+      ->execute();
+
+    // A place to store messages during the run.
+    $sandbox['messages'] = [];
+
+    // Last node read via the query.
+    $sandbox['current'] = 0;
+  }
+
+  $nodes_per_batch = 100;
+
+  // Handle one pass through.
+  $nids = \Drupal::entityQuery('node')
+    ->condition('type', 'article')
+    ->range($sandbox['current'], $nodes_per_batch)
+    ->execute();
+
+  $nodes = node_load_multiple($nids);
+
+  foreach ($nodes as $node) {
+    $article_date = $node->field_publication_date->getValue()[0]['value'];
+    $node->field_issue->target_id = $sandbox['issues'][$article_date];
+    $node->save();
+    $sandbox['current']++;
+  }
+
+  print_r($sandbox['current'] . ' nodes processed. ');
+
+  if ($sandbox['max'] == 0) {
+    $sandbox['#finished'] = 1;
+  }
+  else {
+    $sandbox['#finished'] = ($sandbox['current'] / $sandbox['max']);
+  }
+  $percent = round($sandbox['#finished'] * 100) . '%';
+  print_r($percent . ' processed. ');
+}
+
+/**
+ * Set field_issue for all podcasts.
+ */
+function russom_example_update_8007(&$sandbox) {
+
+  // Use the sandbox at your convenience to store the information needed
+  // to track progression between successive calls to the function.
+  if (!isset($sandbox['max'])) {
+
+    $sandbox['issues'] = _get_issues_by_date();
+
+    // Total nodes that must be visited.
+    $sandbox['max'] = \Drupal::entityQuery('node')
+      ->condition('type', 'podcast')
+      ->count()
+      ->execute();
+
+    // A place to store messages during the run.
+    $sandbox['messages'] = [];
+
+    // Last node read via the query.
+    $sandbox['current'] = 0;
+  }
+
+  $nodes_per_batch = 100;
+
+  // Handle one pass through.
+  $nids = \Drupal::entityQuery('node')
+    ->condition('type', 'podcast')
+    ->range($sandbox['current'], $nodes_per_batch)
+    ->execute();
+
+  $nodes = node_load_multiple($nids);
+
+  foreach ($nodes as $node) {
+    $article_date = $node->field_publication_date->getValue()[0]['value'];
+    $node->field_issue->target_id = $sandbox['issues'][$article_date];
+    $node->save();
+    $sandbox['current']++;
+  }
+
+  print_r($sandbox['current'] . ' nodes processed. ');
+
+  if ($sandbox['max'] == 0) {
+    $sandbox['#finished'] = 1;
+  }
+  else {
+    $sandbox['#finished'] = ($sandbox['current'] / $sandbox['max']);
+  }
+  $percent = round($sandbox['#finished'] * 100) . '%';
+  print_r($percent . ' processed. ');
+}
+
+/**
+ * Implements _getPollByPollChoiceId();
+ * Queries database for poll id by poll choice id.
+ * Returns poll entity.
+ *
+ * @param $poll_choice_id
+ *
+ * @return \Drupal\Core\Entity\EntityInterface[]
+ */
+function _getPollByPollChoiceId($poll_choice_id) {
+  // Query if $poll_choice_id is a saved poll choice.
+  $database = \Drupal::database();
+  $result = $database->select('poll_choice_field_data', 'pcfd')
+    ->fields('pcfd', ['id'])
+    ->condition('id', $poll_choice_id, '=')
+    ->execute()
+    ->fetchCol();
+
+  if (!empty($result)) {
+    // Query database for poll id to load entity.
+    $pid = reset($result);
+    $entity_id = $database->select('poll__choice', 'pc')
+      ->fields('pc', ['choice_target_id', 'entity_id'])
+      ->condition('choice_target_id', $pid, '=')
+      ->execute()
+      ->fetchAll();
+
+    // Load poll entity.
+    $poll = \Drupal::entityTypeManager()
+      ->getStorage('poll')
+      ->loadByProperties([
+        'id' => reset($entity_id)->entity_id,
+      ]);
+
+    // Return poll entity.
+    return $poll;
+  }
+  else {
+    $message = 'Could not load find poll id, to load poll entity, using the following poll field choice id of .' . $poll_choice_id;
+    \Drupal::logger('russom_example')->error($message);
+  }
+}
+
+function _set_in_this_issue_articles($issue) {
+  $issue_articles = $issue->get('field_article');
+  $articles_array = [];
+  foreach ($issue_articles as $a) {
+    array_push($articles_array, $a->entity->id());
+  }
+  foreach ($issue_articles as $a) {
+    if (count($a->entity->get('field_in_this_issue')) < 4) {
+      $temp_articles = $articles_array;
+      if (($key = array_search($a->entity->id(), $temp_articles)) !== FALSE) {
+        unset($temp_articles[$key]);
+      }
+      shuffle($temp_articles);
+      $temp_articles = array_slice($temp_articles, 0, 4);
+      $field_value = [];
+      foreach ($temp_articles as $temp_article) {
+        $field_value[] = ['target_id' => $temp_article];
+      }
+      $a->entity->get('field_in_this_issue')->setValue($field_value);
+      $a->entity->save();
+    }
+  }
+}
+
+function _get_issues_by_date() {
+  $db = \Drupal::service('database');
+  $result = $db->query("select field_publication_date_value, entity_id from node__field_publication_date where bundle='issue'");
+
+  $issues_array = [];
+  foreach ($result as $issue) {
+    $date = $issue->field_publication_date_value;
+    $issues_array[$issue->field_publication_date_value] = $issue->entity_id;
+  }
+
+  return $issues_array;
+}
+
+/**
+ * Implements hook_search_api_solr_documents_alter();
+ */
+function russom_example_search_api_solr_documents_alter(&$documents, IndexInterface $index, array $items) {
+  // Uses topic term's parent for faceting if it exist.
+  foreach ($documents as $document) {
+
+    $ts = $document->getFields()['tm_field_topics'];
+    $topics = [];
+    foreach ($ts as $tid) {
+      $ancestors = \Drupal::service('entity_type.manager')
+        ->getStorage("taxonomy_term")
+        ->loadAllParents($tid);
+      foreach ($ancestors as $term) {
+        if (count($ancestors) == 1 && !in_array($term->id(), $topics)) {
+          $topics[] = (string) $term->id();
+        }
+        elseif ($tid != $term->id() && !in_array($term->id(), $topics)) {
+          $topics[] = (string) $term->id();
+        }
+      }
+    }
+    $document->setField('tm_field_topics', $topics);
+  }
+}

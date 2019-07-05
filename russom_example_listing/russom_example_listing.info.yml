@@ -1,0 +1,7 @@
+name: WG Directory Listing
+type: module
+description: Listings using Vue.js application.
+package: Russom Example
+core: 8.x
+dependencies:
+  - votingapi_widgets

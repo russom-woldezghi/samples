@@ -1,0 +1,9 @@
+entity.comment.edit_form:
+  route_name: entity.comment.edit_form
+  group: comment
+  title: Edit
+
+entity.comment.delete_form:
+  route_name: entity.comment.delete_form
+  group: comment
+  title: Delete

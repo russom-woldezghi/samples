@@ -1,0 +1,19 @@
+<?php
+
+/**
+ * @file
+ * Contains russom_example_listing.module.
+ */
+
+/**
+ * Implements hook_theme().
+ */
+function russom_example_listing_theme($existing, $type, $theme, $path) {
+  return [
+    'russom_example_template' => [
+      'variables' => [
+        'var' => NULL,
+      ],
+    ],
+  ];
+}

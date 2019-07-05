@@ -1,0 +1,8 @@
+services:
+  russom_example_forums.taxonomy_term_tree:
+    class: Drupal\russom_example_forums\TaxonomyTermTree
+    arguments: ['@entity_type.manager']
+  russom_example_forums.breadcrumb.print_listing:
+    class: Drupal\russom_example_forums\Breadcrumb\ForumPrintPageBreadcrumb
+    tags:
+      - { name: breadcrumb_builder, priority: 100 }

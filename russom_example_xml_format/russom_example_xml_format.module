@@ -1,0 +1,25 @@
+<?php
+
+/**
+ * @file
+ * Contains russom_example_xml_format.module.
+ */
+
+use Drupal\Core\Form\FormStateInterface;
+
+
+/**
+ * Implements hook_form_alter().
+ */
+function russom_example_xml_format_form_alter(&$form, FormStateInterface $form_state, $form_id) {
+
+  // Force default for fields
+  // Known issue with Drupal 8 core: https://www.drupal.org/project/drupal/issues/1278886
+  if ($form_id == 'node_article_form' || 'node_article_edit_form') {
+    // Force simplier text format to handle <p> being printed on journal sites.
+    // Abstract field
+    if (isset($form['field_abstract']) && !isset($form['field_abstract']['und']['0']['#format'])) {
+      $form['field_abstract']['widget'][0]['#format'] = "restricted_html";
+    }
+  }
+}

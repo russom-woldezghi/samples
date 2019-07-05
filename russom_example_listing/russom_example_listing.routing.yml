@@ -1,0 +1,15 @@
+russom_example_client_endpoint:
+  path: '/api/company/russom_example_listing_endpoint.json'
+  methods:  [GET]
+  defaults:
+    _controller: 'Drupal\russom_example_listing\Controller\WgDirectoryController::get'
+  requirements:
+    _permission: 'access content'
+
+russom_example_page:
+  path: '/russom_example'
+  defaults:
+    _controller: '\Drupal\russom_example_listing\Controller\WgDirectoryController::directoryPage'
+    _title: 'Innovators Directory'
+  requirements:
+    _permission: 'access content'

@@ -1,0 +1,6 @@
+name: Russom Example XML Format
+type: module
+description: Custom XML file formats for importing to publication databases such as PubMed, CrossRef and LinkOut.
+package: Russom Example
+version: 8.x
+core: 8.x

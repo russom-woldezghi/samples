@@ -1,0 +1,6 @@
+name: Russom Example Analytics
+type: module
+description: Gooogle Tag Manager script implementation.
+core: 8.x
+package: Russom Example
+

@@ -1,0 +1,4 @@
+view.announcement_banner.page_1:
+  title: 'Configure Banner'
+  route_name: view.announcement_banner.page_1
+  group: 'russom_example_banner'

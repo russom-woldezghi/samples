@@ -1,0 +1,9 @@
+name: Russom Example Forums
+type: module
+description: Customization of Drupal core forums module.
+core: 8.x
+package: Russom Example
+
+dependencies:
+  - votingapi_widgets
+  - drupal:forum

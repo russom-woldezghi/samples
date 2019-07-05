@@ -1,0 +1,33 @@
+# Page node type migration
+
+id: node_page
+label: Page Node type
+
+migration_tags:
+  - Drupal 7
+  - Content
+  - No Translation
+
+migration_group: node
+
+source:
+  plugin: d7_node
+  node_type: page
+
+destination:
+  plugin: entity:node
+  default_bundle: page
+
+process:
+#  ....
+
+  # Node to Paragraph
+  field_show_social_share_widget:
+    # Migrating node field value 'field_show_social_buttons' to
+    # 'field_show_social_share_widget' of 'hero' paragraph bundle using 'field_hero' entity reference field.
+    plugin: node_to_paragraph
+    source: field_show_social_buttons
+    destination: field_show_social_share_widget
+    node_field: field_hero
+    paragraph_type: hero
+    migration: example_node_page

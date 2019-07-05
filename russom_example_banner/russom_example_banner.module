@@ -1,0 +1,162 @@
+<?php
+
+/**
+ * @file
+ * Contains russom_example_banner.module.
+ */
+
+use Drupal\Core\Form\FormStateInterface;
+use Drupal\node\Entity\Node;
+
+/**
+ * Implements hook_preprocess_page().
+ */
+function russom_example_banner_preprocess_page(&$variables) {
+  // Get current banner id, if set.
+  if ($current_banner_id = \Drupal::state()->get('current_banner_id')) {
+
+    /*
+     * Checks if user has 'view' permission.
+     * Unpublished banner node will be shown to users with access to unpublished nodes.
+     * Published banners will be shown to all user roles.
+     */
+    $user = \Drupal::currentUser();
+    $banner = \Drupal::entityTypeManager()
+      ->getStorage('node')
+      ->load($current_banner_id);
+    // Check that banner is not empty or null.
+    if (!empty($banner)) {
+      // Check view access to node.
+      $view = $banner->access('view', $user);
+      if ($view) {
+        // Build banner node object.
+        $build = \Drupal::entityTypeManager()
+          ->getViewBuilder('node')
+          ->view($banner, 'teaser');
+        // Pass node object page variable.
+        $variables['page']['banner'] = $build;
+      }
+    }
+
+  }
+}
+
+/**
+ * Implements hook_views_pre_render().
+ */
+function russom_example_banner_views_pre_render(\Drupal\views\ViewExecutable $view) {
+  if ($view->id() == 'announcement_banner' && $view->current_display == 'page_1') {
+    foreach ($view->result as $value) {
+      // Apply administration level messages and notifications of banner settings to admin view page.
+      $current_route_name = \Drupal::service('current_route_match')
+        ->getRouteName();
+
+      if ($current_route_name === 'view.announcement_banner.page_1') {
+        // Set message for admin that banner is not set.
+        if ($value->_entity->id() === \Drupal::state()
+            ->get('current_banner_id')
+        ) {
+          if ($value->_entity->isPublished() == FALSE) {
+            \Drupal::messenger()
+              ->addWarning('The current banner, "' . $value->_entity->label() . '" is unpublished. Please publish the banner so all user roles can view the banner.');
+          }
+
+          // Current published banner, viewable to public.
+          if ($value->_entity->isPublished()) {
+            // Set current_banner flag for adding color-success class.
+            $value->_entity->current_banner = TRUE;
+
+            // Set message for admin that banner is set.
+            \Drupal::messenger()
+              ->addStatus('Current banner: "' . $value->_entity->label() . '" is published.');
+          }
+        }
+      }
+    }
+  }
+}
+
+/**
+ * Implements hook_form_alter().
+ */
+function russom_example_banner_form_alter(&$form, FormStateInterface $form_state, $form_id) {
+  if ($form_id == 'views_form_announcement_banner_page_1') {
+    $form['actions']['save_order']['#submit'][] = 'russom_example_banner_draggableviews_form_submit';
+    array_push($form['actions']['save_order']['#submit'], 'russom_example_banner_draggableviews_form_submit');
+    $form['actions']['save_order']['#value'] = t('Activate the top banner');
+  }
+}
+
+/**
+ * Implements russom_example_banner_draggableviews_form_submit().
+ */
+function russom_example_banner_draggableviews_form_submit(&$form, FormStateInterface $form_state) {
+  // Submit first row of user input values.
+  $form_user_input = $form_state->getUserInput();
+  $first_banner = reset($form_user_input['draggableviews']);
+  _current_banner($first_banner['id']);
+}
+
+/**
+ * Implements hook_module_implements_alter().
+ */
+function russom_example_banner_module_implements_alter(&$implementations, $hook) {
+  if ('form_alter' == $hook && isset($implementations['russom_example_banner'])) {
+    $group = $implementations['russom_example_banner'];
+    unset($implementations['russom_example_banner']);
+    $implementations['russom_example_banner'] = $group;
+  }
+}
+
+/**
+ * Set current banner and log current banner.
+ *
+ * @param $id
+ */
+function _current_banner($id) {
+  $node = Node::load($id);
+  if (!empty($node)) {
+    // Set banner id and log current banner as a state.
+    \Drupal::state()->set('current_banner_id', $id);
+  }
+}
+
+/**
+ * Implements hook_preprocess_views_view_table().
+ */
+function russom_example_banner_preprocess_views_view_table($variables) {
+  if ($variables['view']->id() == 'announcement_banner' && $variables['view']->current_display == 'page_1') {
+    foreach ($variables['view']->result as $key => $value) {
+      // Apply administration level messages and notifications of banner settings to admin view page.
+      $current_route_name = \Drupal::service('current_route_match')
+        ->getRouteName();
+
+      if ($current_route_name == 'view.announcement_banner.page_1') {
+        if ($value->_entity->current_banner) {
+          // Add css to highlight banner in view list.
+          $variables['rows'][$key]['attributes']->addClass('color-success');
+
+          $new_value = $variables['rows'][$key];
+          unset($variables['rows'][$key]);
+          array_unshift($variables['rows'], $new_value);
+
+        }
+      }
+    }
+  }
+}
+
+/**
+ * Implementation of hook_entity_view_alter();
+ */
+function russom_example_banner_node_view_alter(&$build, $entity, $display) {
+  if (isset($build['#node'])
+    && $build['#node']->bundle() == 'banner'
+    && \Drupal::currentUser()->hasPermission('schedule editorial transition publish')) {
+    // From russom_example_banner.links.contextual.yml 'group' name
+    // Adds contextual link to admin announcement banner page.
+    $build['#contextual_links']['russom_example_banner'] = [
+      'route_parameters' => [],
+    ];
+  }
+}

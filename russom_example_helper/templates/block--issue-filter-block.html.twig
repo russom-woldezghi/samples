@@ -1,0 +1,28 @@
+{#
+/**
+ * @file
+ * Profile Issue Filter block.
+ */
+#}
+{% set catch_cache = content|render %}
+{% set newArr = [] %}
+
+<form class="russom-example__issue-filters">
+    <ul class="russom-example__issue-filter">
+        {% for key, value in dates %}
+            <li class="russom-example__issue-filter__tab">
+                <button type="button" class="russom-example__issue-filter--trigger">{{ key }}</button>
+                <ul class="russom-example__issue-filter__children">
+                    {% for year in value %}
+                        {% if year not in newArr %}
+                            <li class="filter-link">
+                                {{ year.url }}
+                            </li>
+                            {% set newArr = newArr|merge([year]) %}
+                        {% endif %}
+                    {% endfor %}
+                </ul>
+            </li>
+        {% endfor %}
+    </ul>
+</form>

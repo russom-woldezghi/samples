@@ -1,0 +1,5 @@
+services:
+  russom_example_file.event_subscriber:
+    class: Drupal\russom_example_file\EventSubscriber\RussomExampleFileRedirect
+    tags:
+      - {name: event_subscriber}

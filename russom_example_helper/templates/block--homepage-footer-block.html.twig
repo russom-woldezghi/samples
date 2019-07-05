@@ -1,0 +1,71 @@
+{% set catch_cache = content|render %}
+{% if polls %}
+    {% for poll in polls %}
+        <section class="russom-example__poll">
+            <div class="container">
+                <div class="russom-example__layout--center-offset">
+                    <div class="russom-example__page-content">
+                        {{ drupal_entity('poll', poll, 'inline') }}
+                    </div>
+                </div>
+            </div>
+        </section>
+    {% endfor %}
+{% endif %}
+
+{% if archives %}
+    <section class="russom-example__topics">
+        <div class="container">
+            <div class="russom-example__layout--center-offset">
+                <div class="russom-example__page-content">
+                    <h1 class="russom-example__topics__label">{{ 'From the Archive'|t }}</h1>
+                    <ul class="russom-example__topics__list">
+                        {% for archive in archives %}
+                            <li>{{ drupal_entity('node', archive, 'teaser_reverse') }}</li>
+                        {% endfor %}
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </section>
+{% endif %}
+
+<section class="russom-example__about-band">
+    <div class="container">
+        <div class="russom-example__layout--center-offset">
+            <div class="russom-example__page-content">
+                <div class="russom-example__about-band__block">
+                    <h1 class="russom-example__about__title">{{ about_title.0.value }}</h1>
+                    <div class="russom-example__about__desc">
+                        {{ about_description }}
+                    </div>
+                    <a href="{{ about_link }}" class="russom-example__button russom-example__button--small ">
+                        {{ about_link_title }}
+                    </a>
+                </div>
+                {% if upcoming_themes %}
+                    <div class="russom-example__about-band__block">
+                        <h2 class="russom-example__title-label">{{ 'Upcoming Themes'|t }}</h2>
+                        <ul class="russom-example__about__themes">
+                            {% for upcoming_theme in upcoming_themes %}
+                                <li>{{ drupal_entity('paragraph', upcoming_theme, 'upcoming_homepage_list_item') }}</li>
+                            {% endfor %}
+                        </ul>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</section>
+
+{% if ctas %}
+    <section class="russom-example__cta-band">
+        <div class="container">
+            <ul class="russom-example__cta-band__list">
+                {% for cta in ctas %}
+                    <li>{{ drupal_entity('node', cta, 'rail') }}</li>
+                {% endfor %}
+            </ul>
+        </div>
+    </section>
+{% endif %}

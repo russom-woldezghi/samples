@@ -1,0 +1,7 @@
+view.flagged_comment.page_1:
+  title: 'Flagged Comments'
+  route_name: view.flagged_comment.page_1
+  parent_id: comment.admin
+  weight: 2
+  cache_tags:
+    - comment_list

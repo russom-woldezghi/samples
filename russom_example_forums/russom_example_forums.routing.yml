@@ -1,0 +1,8 @@
+russom_example_forums.print_controller:
+  path: '/forums/print/{id}'
+  defaults:
+    _controller: '\Drupal\russom_example_forums\Controller\ForumPrintController::load'
+    _title_callback: '\Drupal\russom_example_forums\Controller\ForumPrintController::getTitle'
+  requirements:
+    _permission: 'access forum content'
+    _access: 'TRUE'

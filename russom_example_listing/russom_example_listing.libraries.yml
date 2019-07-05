@@ -1,0 +1,18 @@
+listing:
+  version: VERSION
+  js:
+    js/russom_example.js: {}
+  dependencies:
+    - core/jquery
+    - core/drupal
+    - russom_example_listing/chosen
+    - russom_example_listing/vue
+
+chosen:
+  version: VERSION
+  js:
+    /libraries/chosen/chosen.jquery.min.js: { minified: true }
+vue:
+  version: VERSION
+  js:
+    /libraries/vue/dist/vue.min.js: { minified: true }

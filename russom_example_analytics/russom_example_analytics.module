@@ -1,0 +1,39 @@
+<?php
+
+/**
+ * @file
+ * Contains russom_example_analytics.module.
+ */
+
+/**
+ * Implements hook_page_attachments().
+ */
+function russom_example_analytics_page_attachments(array &$attachments) {
+  $attachments['#attached']['html_head'][] = [
+    // Add Datalayer to <head>.
+    [
+      '#type' => 'html_tag',
+      // The HTML tag to add.
+      '#tag' => 'script',
+      // The value of the script tag
+      '#value' => 'var _trackAnalytics = function() {};var dataLayer = {/* Specific data layer requirements go here */};var gaDataLayer = [dataLayer];',
+      // Weight of tag
+      '#weight' => -99999,
+
+    ],
+    // A key for HTML element when altering.
+    'russom-example-data-layer',
+  ];
+}
+
+/**
+ * Implements hook_module_implements_alter().
+ */
+function russom_example_analytics_module_implements_alter(&$implementations, $hook) {
+  //  To ensure russom_example_analytics is loaded last
+  if ($hook == 'page_attachments') {
+    $group = $implementations['russom_example_analytics'];
+    unset($implementations['russom_example_analytics']);
+    $implementations['russom_example_analytics'] = $group;
+  }
+}

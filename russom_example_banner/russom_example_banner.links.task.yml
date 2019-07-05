@@ -1,0 +1,5 @@
+view.announcement_banner.page_1:
+  title: 'Announcement Banner'
+  route_name: view.announcement_banner.page_1
+  base_route: system.admin_content
+  weight: 10

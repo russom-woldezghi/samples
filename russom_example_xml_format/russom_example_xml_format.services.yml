@@ -1,0 +1,5 @@
+services:
+  serializer.encoder.russom_example_xml:
+    class: Drupal\russom_example_xml_format\Encoder\RussomXMLEncoder
+    tags:
+      - { name: encoder, priority: 21, format: 'russom_example_xml' }
