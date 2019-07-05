@@ -1,0 +1,206 @@
+<?php
+
+use Drupal\Core\Render\BubbleableMetadata;
+use Drupal\node\Entity\Node;
+use Drupal\paragraphs\Entity\Paragraph;
+
+/**
+ * @file
+ * Contains russom_example_google_scholar.module.
+ */
+
+/**
+ * Implements hook_page_attachments().
+ */
+function russom_example_google_scholar_page_attachments(array &$page) {
+
+  // Don't apply to edit, admin pages, etc.
+  /** @var \Drupal\Core\Routing\AdminContext $admin_context */
+  $admin_context = \Drupal::service('router.admin_context');
+  if (!$admin_context->isAdminRoute()) {
+
+    $node = \Drupal::routeMatch()->getParameter('node');
+    if ($node instanceof \Drupal\node\NodeInterface) {
+      // Make sure its a node. Get anything else you need from the node object.
+      $nid = $node->id();
+      $node = Node::load($nid);
+
+      $type = $node->getType();
+
+      // Adds custom Google Scholar for article content type.
+      // Outputs in <head>, <meta name="citation_reference"...>
+      if ($type == 'article'):
+
+        $reference_value_fields = [
+          [
+            'citation' => 'citation_reference',
+            'field' => 'field_reference',
+          ],
+          [
+            'citation' => 'citation_author',
+            'field' => 'field_author',
+          ],
+        ];
+
+        // For each field listed, get the entity value of field
+        foreach ($reference_value_fields as $key => $ref_value) {
+
+          $paragraph_reference = $node->get($ref_value['field'])->entity;
+          // Only fields with that are not null
+          if (!is_null($paragraph_reference)) {
+
+            $field = $ref_value['field'];
+            $citation = $ref_value['citation'];
+
+            $paragraph = $node->$field->getValue();
+
+            $reference_values = [];
+
+            foreach ($paragraph as $element) {
+              // Load paragraph entity
+              $ref_paragraph_values = Paragraph::load($element['target_id']);
+
+              // Output to specific view mode, for greater control of output
+              $view_builder = \Drupal::entityManager()
+                ->getViewBuilder('paragraph');
+              $meta_tag = $view_builder->view($ref_paragraph_values, 'russom_example_google_scholar_metatag');
+              $rendered_meta_tag = \Drupal::service('renderer')
+                ->renderRoot($meta_tag);
+              $reference_values[] = $rendered_meta_tag;
+
+            }
+
+            $meta_tag_citation = [];
+            // Delta variable allows for multiple iterations of $ref_value['citation'] meta tag.
+            $delta = 0;
+
+            foreach ($reference_values as $key => $value) {
+
+              $string = $value->__toString();
+              // Strips HTML output for theme suggestions and unnecessary whitespace
+              $stripped_citaiton_theme_hook = preg_replace('/<!--(.|\s)*?-->\s*/', '', $string);
+              $citation = trim($stripped_citaiton_theme_hook);
+
+              $meta_tag_citation = [
+                '#tag' => 'meta',
+                '#attributes' => [
+                  'name' => $ref_value['citation'],
+                  'content' => $citation,
+                ],
+              ];
+
+              // Append each $meta_tag_citation as Google Scholar meta tag
+              $page['#attached']['html_head'][] = [
+                $meta_tag_citation,
+                $citation . $delta++,
+              ];
+
+            }
+          }
+        }
+      endif;
+
+      // For all content types, add Google Scholar
+      // Outputs in <head>, <meta name="citation_fulltext_world_readable"...>
+      if ($type) {
+
+        $meta_tag_citation_readable = " ";
+        $meta_tag_citation_readable = [
+          '#tag' => 'meta',
+          '#attributes' => [
+            'name' => 'citation_fulltext_world_readable',
+            'content' => $meta_tag_citation_readable,
+          ],
+        ];
+        // Append citation_fulltext_world_readable Google Scholar meta tag
+        $page['#attached']['html_head'][] = [
+          $meta_tag_citation_readable,
+          'citation_fulltext_world_readable',
+        ];
+      }
+    }
+  }
+}
+
+/**
+ * Implements hook_token_info().
+ */
+function russom_example_google_scholar_token_info() {
+  $type = [
+    'name' => t('Article Volume'),
+    'description' => t('Token used for article volume.'),
+    'needs-data' => 'node',
+  ];
+
+  // Article volume token
+  $node['article_volume'] = [
+    'name' => t("Article Volume"),
+    'description' => t("Looks up issues for matching nid in field_article, get volume field value"),
+  ];
+
+  // Article issue token
+  $node['article_issue'] = [
+    'name' => t("Article Issue"),
+    'description' => t("Looks up issues for matching nid in field_article, get issue field value"),
+  ];
+
+  return [
+    'types' => ['node' => $type],
+    'tokens' => ['node' => $node],
+  ];
+}
+
+/**
+ * Implements hook_tokens().
+ */
+function russom_example_google_scholar_tokens($type, $tokens, array $data, array $options, BubbleableMetadata $bubbleable_metadata) {
+  global $base_url;
+  $replacements = [];
+
+  if ($type == 'node' && !empty($data['node'])) {
+    foreach ($tokens as $name => $original) {
+      // Article volume
+      if ($name == 'article_volume') {
+
+        $article_nid = $data['node']->nid->getValue()[0]['value'];
+
+        $query = \Drupal::entityQuery('node');
+        $query->condition('type', 'issue')
+          ->condition('field_article', $article_nid);
+        $query_result = $query->execute();
+        $issue_nid = reset($query_result);
+
+        // If there is value, get volume number from issue
+        if (!empty($query_result)) {
+          $issue = Node::load(reset($query_result));
+
+          $volume = $issue->field_volume_number;
+          $volume_number = $volume->getValue()[0]['value'];
+          $replacements[$original] = $volume_number;
+        }
+      }
+      // Article issue
+      if ($name == 'article_issue') {
+
+        $article_nid = $data['node']->nid->getValue()[0]['value'];
+
+        $query = \Drupal::entityQuery('node');
+        $query->condition('type', 'issue')
+          ->condition('field_article', $article_nid);
+        $query_result = $query->execute();
+        $issue_nid = reset($query_result);
+
+        // If there is value, get issue number from issue
+        if (!empty($query_result)) {
+          $issue = Node::load(reset($query_result));
+
+          $issue_value = $issue->field_issue_number;
+          $issue_number = $issue_value->getValue()[0]['value'];
+          $replacements[$original] = $issue_number;
+        }
+      }
+    }
+  }
+
+  return $replacements;
+}
